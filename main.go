@@ -1,16 +1,23 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/microcosm-cc/bluemonday"
 	"gopkg.in/russross/blackfriday.v2"
 )
+
+type Table map[string]interface{}
+type Content struct {
+	Text string
+}
 
 func main() {
 	//input := []byte("Hello.\n\n* This is markdown.\n* It is fun\n* Love it or leave it.")
@@ -80,10 +87,16 @@ func DealFile(path string, f os.FileInfo) {
 
 		str := strings.Replace(string(buf[0:n]), "\r", "", -1)
 		html := Transform([]byte(str))
+
+		var data Table = make(Table)
+		var c Content
+		c.Text = string(html)
+		data["Blog"] = c
+		allHtml := TemplateHtml("bin/templates/default/article.html", data)
 		//fmt.Println(string(html))
 		//fmt.Println(buf[0:n])
 		//fmt.Println([]byte(str))
-		if _, err := distF.Write(html); err != nil {
+		if _, err := distF.Write(allHtml); err != nil {
 			fmt.Println("Write error: ", err)
 			return
 		}
@@ -102,8 +115,25 @@ func PathExists(path string) (bool, error) {
 	return false, err
 }
 
+func WithOptions(flags blackfriday.HTMLFlags) blackfriday.Option {
+	params := blackfriday.HTMLRendererParameters{Flags: flags}
+	renderer := blackfriday.NewHTMLRenderer(params)
+	return blackfriday.WithRenderer(renderer)
+}
 func Transform(source []byte) []byte {
-	unsafe := blackfriday.Run(source)
+	flags := blackfriday.CommonHTMLFlags | blackfriday.TOC
+	unsafe := blackfriday.Run(source, WithOptions(flags))
 	html := bluemonday.UGCPolicy().SanitizeBytes(unsafe)
 	return html
+}
+
+func TemplateHtml(templateFile string, data Table) []byte {
+	tpl, err := template.ParseFiles(templateFile)
+	if err != nil {
+		fmt.Println("template error: ", err)
+		return []byte{}
+	}
+	bytesBuffer := bytes.NewBuffer([]byte{})
+	tpl.Execute(bytesBuffer, data)
+	return bytesBuffer.Bytes()
 }
