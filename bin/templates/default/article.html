@@ -2,6 +2,10 @@
 <html lang="zn">
 <head>
     <meta charset="utf-8">
+    <title>{{.Data.title}}</title>
+    <meta name="keywords" content="{{.Data.keywords}}">
+    <meta name="description" content="{{.Data.description}}">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
 </head>
 <body>
 
@@ -10,7 +14,7 @@
         <div>
             <div class="post-description">
                 <p>
-                    {{.Blog.Text}}
+                    {{.Data.text}}
                 </p>
             </div>
         </div>

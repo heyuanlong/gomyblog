@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"io"
@@ -15,8 +16,8 @@ import (
 )
 
 type Table map[string]interface{}
-type Content struct {
-	Text string
+type Blog struct {
+	Data Table
 }
 
 func main() {
@@ -55,6 +56,9 @@ func DealDir(path string, f os.FileInfo) {
 }
 
 func DealFile(path string, f os.FileInfo) {
+	var blog Blog
+	blog.Data = make(Table)
+
 	if f.ModTime().Unix() < (time.Now().Unix() - EXPIRE_TIME) {
 		return
 	}
@@ -74,33 +78,44 @@ func DealFile(path string, f os.FileInfo) {
 	}
 	defer distF.Close()
 
-	buf := make([]byte, 102400)
+	bufReader := bufio.NewReader(sourceF)
 	for {
-		n, err := sourceF.Read(buf)
-		if err != nil && err != io.EOF {
+		line, _, err := bufReader.ReadLine()
+		lineStr := strings.TrimSpace(string(line))
+		if lineStr == HEADER_SPLIT_LINE {
+			break
+		}
+		dealHeader(lineStr, &blog)
+		if err != nil {
+			if err == io.EOF {
+				fmt.Println(err == io.EOF)
+				return
+			}
 			fmt.Println("Read error: ", err)
 			return
 		}
-		if n == 0 {
-			break
-		}
-
-		str := strings.Replace(string(buf[0:n]), "\r", "", -1)
-		html := Transform([]byte(str))
-
-		var data Table = make(Table)
-		var c Content
-		c.Text = string(html)
-		data["Blog"] = c
-		allHtml := TemplateHtml("bin/templates/default/article.html", data)
-		//fmt.Println(string(html))
-		//fmt.Println(buf[0:n])
-		//fmt.Println([]byte(str))
-		if _, err := distF.Write(allHtml); err != nil {
-			fmt.Println("Write error: ", err)
-			return
-		}
 	}
+
+	buf := make([]byte, 102400)
+	n, err := bufReader.Read(buf)
+	if err != nil && err != io.EOF {
+		fmt.Println("Read error: ", err)
+		return
+	}
+	str := strings.Replace(string(buf[0:n]), "\r", "", -1)
+	fmt.Println(str)
+	html := Transform([]byte(str))
+
+	blog.Data["text"] = string(html)
+	allHtml := TemplateHtml("bin/templates/default/article.html", blog)
+	//fmt.Println(string(html))
+	//fmt.Println(buf[0:n])
+	//fmt.Println([]byte(str))
+	if _, err := distF.Write(allHtml); err != nil {
+		fmt.Println("Write error: ", err)
+		return
+	}
+
 	return
 }
 
@@ -127,13 +142,28 @@ func Transform(source []byte) []byte {
 	return html
 }
 
-func TemplateHtml(templateFile string, data Table) []byte {
+func TemplateHtml(templateFile string, blog Blog) []byte {
 	tpl, err := template.ParseFiles(templateFile)
 	if err != nil {
 		fmt.Println("template error: ", err)
 		return []byte{}
 	}
 	bytesBuffer := bytes.NewBuffer([]byte{})
-	tpl.Execute(bytesBuffer, data)
+	tpl.Execute(bytesBuffer, blog)
 	return bytesBuffer.Bytes()
+}
+
+func dealHeader(line string, blog *Blog) {
+	if strings.TrimSpace(line) == "" {
+		return
+	}
+	strs := strings.SplitN(line, ":", 2)
+	if len(strs) < 2 {
+		return
+	}
+
+	key := strings.TrimSpace(strs[0])
+	value := strings.TrimSpace(strs[1])
+	blog.Data[key] = value
+
 }
